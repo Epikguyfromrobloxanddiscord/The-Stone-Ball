@@ -1,0 +1,266 @@
+<!DOCTYPE html><html>
+<head>
+  <title>Circle Adventure</title>
+  <style>
+    canvas {
+      background: #222;
+      display: block;
+      margin: 0 auto;
+    }
+    #startScreen {
+      text-align: center;
+      margin-top: 100px;
+      color: white;
+      font-family: Arial;
+    }
+    #startBtn {
+      padding: 10px 20px;
+      font-size: 20px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body style="background: black;">
+  <div id="startScreen">
+    <h1>Circle Adventure</h1>
+    <button id="startBtn">Play</button>
+  </div>
+  <canvas id="gameCanvas" width="800" height="400" style="display: none;"></canvas>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const keys = {};
+    let gravity = 0.5;
+    let friction = 0.8;
+    let gameStarted = false;class Player {
+  constructor() {
+    this.x = 50;
+    this.y = 300;
+    this.radius = 20;
+    this.color = "#888"; // stone color
+    this.dx = 0;
+    this.dy = 0;
+    this.onGround = false;
+    this.hasKey = false;
+  }
+
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fillStyle = this.color;
+    ctx.fill();
+    ctx.closePath();
+  }
+
+  update() {
+    if (keys["ArrowRight"]) this.dx = 3;
+    else if (keys["ArrowLeft"]) this.dx = -3;
+    else this.dx *= friction;
+
+    if (keys["ArrowUp"] && this.onGround) {
+      this.dy = -10;
+      this.onGround = false;
+    }
+
+    this.dy += gravity;
+    this.x += this.dx;
+    this.y += this.dy;
+
+    if (this.y + this.radius > canvas.height) {
+      this.y = canvas.height - this.radius;
+      this.dy = 0;
+      this.onGround = true;
+    }
+
+    this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x));
+  }
+}
+
+class Platform {
+  constructor(x, y, w, h) {
+    this.x = x;
+    this.y = y;
+    this.w = w;
+    this.h = h;
+  }
+
+  draw() {
+    ctx.fillStyle = "#555";
+    ctx.fillRect(this.x, this.y, this.w, this.h);
+  }
+}
+
+class Key {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.size = 20;
+    this.collected = false;
+  }
+
+  draw() {
+    if (!this.collected) {
+      ctx.fillStyle = "gold";
+      ctx.fillRect(this.x, this.y, this.size, this.size);
+    }
+  }
+}
+
+class Door {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.w = 40;
+    this.h = 60;
+  }
+
+  draw() {
+    ctx.fillStyle = "brown";
+    ctx.fillRect(this.x, this.y, this.w, this.h);
+  }
+
+  isPlayerAtDoor(player) {
+    return (
+      player.x + player.radius > this.x &&
+      player.x - player.radius < this.x + this.w &&
+      player.y + player.radius > this.y &&
+      player.y - player.radius < this.y + this.h
+    );
+  }
+}
+
+class Laser {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.width = 10;
+    this.height = 4;
+    this.speed = 5;
+    this.spawnTime = Date.now();
+  }
+
+  update() {
+    // Chase player horizontally
+    this.x += this.speed;
+  }
+
+  draw() {
+    ctx.fillStyle = "red";
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+  }
+
+  isExpired() {
+    return Date.now() - this.spawnTime > 3000;
+  }
+
+  hits(obj) {
+    return (
+      this.x < obj.x + (obj.w || obj.radius * 2) &&
+      this.x + this.width > obj.x &&
+      this.y < obj.y + (obj.h || obj.radius * 2) &&
+      this.y + this.height > obj.y
+    );
+  }
+}
+
+const player = new Player();
+const platforms = [
+  new Platform(0, 380, 800, 20),
+  new Platform(200, 300, 100, 10),
+  new Platform(350, 250, 100, 10),
+  new Platform(500, 200, 100, 10)
+];
+const key = new Key(520, 170);
+const door = new Door(750, 320);
+const lasers = [];
+
+function handlePlatformCollision(player, platform) {
+  if (
+    player.x + player.radius > platform.x &&
+    player.x - player.radius < platform.x + platform.w &&
+    player.y + player.radius > platform.y &&
+    player.y + player.radius < platform.y + platform.h + 10 &&
+    player.dy >= 0
+  ) {
+    player.y = platform.y - player.radius;
+    player.dy = 0;
+    player.onGround = true;
+  }
+}
+
+function draw() {
+  if (!gameStarted) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  player.update();
+  player.draw();
+
+  platforms.forEach(p => {
+    p.draw();
+    handlePlatformCollision(player, p);
+  });
+
+  key.draw();
+  door.draw();
+
+  // Key collection
+  if (!key.collected &&
+    player.x + player.radius > key.x &&
+    player.x - player.radius < key.x + key.size &&
+    player.y + player.radius > key.y &&
+    player.y - player.radius < key.y + key.size
+  ) {
+    key.collected = true;
+    player.hasKey = true;
+  }
+
+  // Door
+  if (door.isPlayerAtDoor(player) && player.hasKey) {
+    alert("You win!");
+    document.location.reload();
+  }
+
+  // Spawn lasers every 2 seconds
+  if (Math.random() < 0.02) {
+    lasers.push(new Laser(0, player.y + Math.random() * 40 - 20));
+  }
+
+  // Update and draw lasers
+  for (let i = lasers.length - 1; i >= 0; i--) {
+    const laser = lasers[i];
+    laser.update();
+    laser.draw();
+
+    if (laser.hits(player)) {
+      alert("Hit by laser!");
+      document.location.reload();
+    }
+
+    for (let p of platforms) {
+      if (laser.hits(p)) {
+        lasers.splice(i, 1);
+        break;
+      }
+    }
+
+    if (laser.isExpired()) {
+      lasers.splice(i, 1);
+    }
+  }
+
+  requestAnimationFrame(draw);
+}
+
+document.getElementById("startBtn").addEventListener("click", () => {
+  document.getElementById("startScreen").style.display = "none";
+  canvas.style.display = "block";
+  gameStarted = true;
+  draw();
+});
+
+window.addEventListener("keydown", e => keys[e.key] = true);
+window.addEventListener("keyup", e => keys[e.key] = false);
+
+  </script>
+</body>
+</html>
